@@ -105,8 +105,8 @@
                 },
             };
 
-            // Función para añadir el estado actual del gráfico al historial
-            const addCurrentChartToHistory = React.useCallback(() => {
+            // Función para añadir el estado actual del gráfico al historial, incluyendo el formato de descarga
+            const addCurrentChartToHistory = React.useCallback((format) => {
                 if (chartRef.current) {
                     const imageUrl = chartRef.current.toDataURL('image/png'); // Capturar imagen para miniatura
                     const now = new Date();
@@ -118,12 +118,17 @@
                         imageUrl: imageUrl, // URL de la imagen para la miniatura
                         timestamp: now.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }), // Fecha y hora
                         title: chartTitle, // Guardar el título actual del gráfico
+                        downloadFormat: format, // Guardar el formato de descarga
                     };
 
                     setChartHistory(prevHistory => {
-                        // Evitar añadir instantáneas idénticas rápidamente
+                        // Evitar añadir instantáneas idénticas (mismo gráfico, mismo título, mismo formato) rápidamente
                         const lastItem = prevHistory[prevHistory.length - 1];
-                        if (lastItem && JSON.stringify(lastItem.data) === JSON.stringify(newHistoryItem.data) && lastItem.type === newHistoryItem.type && lastItem.title === newHistoryItem.title) {
+                        if (lastItem && 
+                            JSON.stringify(lastItem.data) === JSON.stringify(newHistoryItem.data) && 
+                            lastItem.type === newHistoryItem.type && 
+                            lastItem.title === newHistoryItem.title &&
+                            lastItem.downloadFormat === newHistoryItem.downloadFormat) {
                             return prevHistory;
                         }
                         return [...prevHistory, newHistoryItem];
@@ -172,20 +177,16 @@
                     plugins: [watermarkPlugin], // Registrar el plugin de marca de agua
                 });
 
-                // Añadir al historial después de que el gráfico se haya actualizado/renderizado
-                // Un pequeño retraso para asegurar que la imagen esté disponible
-                const updateTimer = setTimeout(() => {
-                    addCurrentChartToHistory();
-                }, 150);
+                // NO SE AÑADE AL HISTORIAL AUTOMÁTICAMENTE AQUÍ. SOLO SE HACE AL DESCARGAR.
 
                 // Función de limpieza para destruir el gráfico al desmontar el componente
                 return () => {
-                    clearTimeout(updateTimer);
                     if (chartInstance.current) {
                         chartInstance.current.destroy();
                     }
                 };
-            }, [chartType, getChartData, addCurrentChartToHistory, chartTitle]); // Añadir chartTitle a las dependencias
+            }, [chartType, getChartData, chartTitle]); // Dependencias: tipo de gráfico, función de datos y título
+
 
             // --- Funciones para manipular la tabla ---
 
@@ -255,10 +256,11 @@
                     const url = chartRef.current.toDataURL('image/png');
                     const link = document.createElement('a');
                     link.href = url;
-                    link.download = `${chartTitle.replace(/[^a-zA-Z0-9]/g, '_') || 'grafico'}_xgrafics.png`; // Usa el título del gráfico para el nombre del archivo
+                    link.download = `${chartTitle.replace(/[^a-zA-Z0-9]/g, '_') || 'grafico'}_xgrafics.png`;
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
+                    addCurrentChartToHistory('PNG'); // Añadir al historial con formato PNG
                 }
             };
 
@@ -275,13 +277,14 @@
                     const y = (pageHeight - imgHeight) / 2;
 
                     doc.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
-                    doc.save(`${chartTitle.replace(/[^a-zA-Z0-9]/g, '_') || 'grafico'}_xgrafics.pdf`); // Usa el título del gráfico para el nombre del archivo
+                    doc.save(`${chartTitle.replace(/[^a-zA-Z0-9]/g, '_') || 'grafico'}_xgrafics.pdf`);
+                    addCurrentChartToHistory('PDF'); // Añadir al historial con formato PDF
                 } else {
                     console.error("Error: jsPDF no está cargado o chartRef no está disponible.");
                 }
             };
 
-            // Descargar los datos de la tabla como archivo XLS (Excel) - No cambia
+            // Descargar los datos de la tabla como archivo XLS (Excel)
             const downloadXLS = () => {
                 if (typeof window.XLSX !== 'undefined') {
                     const XLSX = window.XLSX;
@@ -289,7 +292,8 @@
                     const ws = XLSX.utils.aoa_to_sheet(dataToExport);
                     const wb = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(wb, ws, "Datos");
-                    XLSX.writeFile(wb, `${chartTitle.replace(/[^a-zA-Z0-9]/g, '_') || 'datos'}_xgrafics.xlsx`); // Usa el título del gráfico para el nombre del archivo
+                    XLSX.writeFile(wb, `${chartTitle.replace(/[^a-zA-Z0-9]/g, '_') || 'datos'}_xgrafics.xlsx`);
+                    addCurrentChartToHistory('XLS'); // Añadir al historial con formato XLS
                 } else {
                     console.error("Error: XLSX no está cargado.");
                 }
@@ -464,6 +468,7 @@
                                     <div key={item.id} className="border border-gray-200 rounded-lg p-2 flex flex-col items-center justify-between text-center">
                                         <img src={item.imageUrl} alt={`Gráfico ${item.type} del ${item.timestamp}`} className="w-full h-32 object-contain mb-2 rounded-md border border-gray-100"/>
                                         <p className="text-sm font-medium text-gray-800">{item.title} ({item.type.charAt(0).toUpperCase() + item.type.slice(1)})</p>
+                                        <p className="text-xs text-gray-500 mb-2">Descargado como: {item.downloadFormat}</p> {/* Muestra el formato de descarga */}
                                         <p className="text-xs text-gray-500 mb-2">{item.timestamp}</p>
                                         <button
                                             onClick={() => loadHistoryItem(item)}
